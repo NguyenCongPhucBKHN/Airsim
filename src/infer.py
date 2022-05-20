@@ -3,6 +3,8 @@ from json.tool import main
 import re
 from socket import TIPC_LOW_IMPORTANCE
 import sys
+from tkinter import Y
+from turtle import st
 from unittest import result
 
 from matplotlib.cbook import contiguous_regions
@@ -37,10 +39,13 @@ class Model1:
         self.stdc=stdc
         self.cnt_ths=cnt_ths
 
-    def inferDect(self, img_path):
+    def inferDect(self, img_path='', frame=None):
             
             outputyolov5=[]
-            results=self.yolov5(img_path)
+            if frame.all==None:
+                results=self.yolov5(img_path)
+            else:
+                results=self.yolov5(frame)
             for i in range(results.xyxy[0].shape[0]):
                 coord = results.xyxy[0][i].cpu().numpy() #Goc toa do nam o doc tren ben trai
                 x1 = int(coord[0].item())  #x_chieungangbentrai
@@ -52,12 +57,15 @@ class Model1:
                 outputyolov5.append(cordinate)
             print("output yolov5: ", outputyolov5)
             return(outputyolov5)
-    def inferSeg(self, img_path):
+    
+    def inferSeg(self, img_path='', frame=None):
         to_tensor=T.ToTensor(
             mean=(0.485, 0.456, 0.406),
             std=(0.485, 0.456, 0.406),
             )
-        im=cv2.imread(img_path)[:,:, ::-1]
+        if frame.all==None:
+            im=cv2.imread(img_path)[:,:, ::-1]
+        im=np.array(frame)
         im=cv2.resize(im,(1280, 720))
         im=to_tensor(dict(im=im, lb=None))['im'].unsqueeze(0).cuda()
         out,_,_=self.stdc(im)
@@ -69,6 +77,7 @@ class Model1:
         pred = palette[pred]
         pred=pred.reshape(720, 1280,3).astype(np.uint8) 
         return pred
+    
     
 
     def findContour(self, pred):
@@ -121,6 +130,45 @@ class Model1:
                     return True
                 else:
                     return False
+
+    def inferVideo(self, video_path):
+        cap = cv2.VideoCapture(video_path)
+        to_tensor=T.ToTensor(
+            mean=(0.485, 0.456, 0.406),
+            std=(0.485, 0.456, 0.406),
+            )
+        i=1
+        while(cap.isOpened()):
+            ret, frame=cap.read()
+            if not ret:
+                break
+            #seg_im=self.inferSeg(frame=frame)
+            
+            # output_dects=self.inferDect(frame=frame)
+            # for dect in output_dects:
+            #     dect_im=cv2.rectangle(frame, (dect[0],dect[1]), (dect[2],dect[3]), (255, 0, 0), 2)
+            
+            
+            im=np.array(frame)
+            im=to_tensor(dict(im=im, lb=None))['im'].unsqueeze(0).cuda()
+            output_seg,_,_=self.stdc(im)
+            output_seg=output_seg.cpu()
+            pred = torch.argmax(output_seg, dim=1)
+            palette = np.array([0, 0, 0, 255, 255, 255]).reshape([2,3])
+            pred = palette[pred]
+            seg_im=pred.reshape(1080,1920,3)
+            
+
+            filename_seg=f'/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/Infer/seg_video/frame_{i}.jpg'
+            filename_dect=f'/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/Infer/dec_video/frame_{i}.jpg'
+            cv2.imwrite(filename_seg, seg_im)
+            #cv2.imwrite(filename_dect,dect_im )
+
+            i=i+1
+
+
+        
+
                 
 
                    
@@ -148,20 +196,24 @@ stdc=BiSeNet('STDCNet1446', 2)
 stdc.load_state_dict(torch.load("/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/log/train_STDC2-Seg/pths/model_maxmIOU75.pth"))
 stdc.cuda()
 stdc.eval()
-#A=glob.glob("/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/test2/test/*png")
-A=glob.glob("/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/Diem1-20220519T121024Z-001/Diem1/*jpg")
-#A=glob.glob("/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/test2/img_1/*.jpg")
+# #A=glob.glob("/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/test2/test/*png")
+# A=glob.glob("/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/Diem1-20220519T121024Z-001/Diem1/*jpg")
+# #A=glob.glob("/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/test2/img_1/*.jpg")
 
-model1= Model1(yolov5=yolo, stdc=stdc)
-i=0
-j=0
-for a in A:
-    print("Image: ",a)
-    if(model1.select_cnt( a)):
-        j=j+1
-    i=i+1
-print(i)
-print("number image segmentation: ",j)
+# model1= Model1(yolov5=yolo, stdc=stdc)
+# i=0
+# j=0
+# for a in A:
+#     print("Image: ",a)
+#     if(model1.select_cnt( a)):
+#         j=j+1
+#     i=i+1
+# print(i)
+# print("number image segmentation: ",j)
+
+model1=Model1(yolov5=yolo, stdc=stdc)
+
+model1.inferVideo(video_path="/home/ivsr/CV_Group/phuc/airsim_proj/STDC-Seg/test.mp4")
     
    
     
